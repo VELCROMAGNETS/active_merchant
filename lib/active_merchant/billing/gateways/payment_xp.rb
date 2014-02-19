@@ -25,20 +25,27 @@ module ActiveMerchant #:nodoc:
         add_creditcard post, card
         add_money post, money
         add_options post, options
+        post[:TransactionType] = "CreditCardCharge"
 
-        commit("WebHost", post)
+        commit("WebHost", "TransactionID", post)
       end
 
-      def refund
-        # FIXME
+      def refund(money, transaction_id, options = {})
+        post = {}
+        add_money post, money
+        add_options post, options
+        post[:TransactionID] = transaction_id
+        post[:TransactionType] = "CreditCardAdjust"
+
+        commit("WebHost", "TransactionID", post)
       end
 
-      def store
-        # FIXME
-      end
+      def store(card, options = {})
+        post = {}
+        add_tokenizable_creditcard(post, card)
+        add_options(post, options)
 
-      def unstore
-        # FIXME
+        commit("GetToken", "Token", post)
       end
 
       def void
@@ -87,14 +94,15 @@ module ActiveMerchant #:nodoc:
         post[:ExpirationDateMMYY] = "%02d%02d" % [card.month, card.year - 2000] if card.year && card.month
       end
 
-      def commit(endpoint, params)
+      def commit(endpoint, authorization_key, params)
         params = params.merge(MerchantID: @merchant_id, MerchantKey: @merchant_key).to_query
         raw_response = ssl_post("#{BASE_URL}#{endpoint}.aspx", params)
         response = Hash[CGI.parse(raw_response).map { |k, v| [k, v.first] }]
         Response.new(
           response['StatusID'] == "0",
-          response['ResponseMessage'],
+          response['ResponseMessage'] || response['Message'],
           response,
+          authorization: response[authorization_key],
           avs_result: { code: response['AVSResponseCode'] },
           cvv_result: response['CVV2ResponseCode'],
         )
