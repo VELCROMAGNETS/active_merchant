@@ -35,7 +35,7 @@ module ActiveMerchant #:nodoc:
         add_money post, money
         add_options post, options
         post[:TransactionID] = transaction_id
-        post[:TransactionType] = "CreditCardAdjust"
+        post[:TransactionType] = "CreditCardCredit"
 
         commit("WebHost", "TransactionID", post)
       end
@@ -96,8 +96,10 @@ module ActiveMerchant #:nodoc:
 
       def commit(endpoint, authorization_key, params)
         params = params.merge(MerchantID: @merchant_id, MerchantKey: @merchant_key).to_query
+
         raw_response = ssl_post("#{BASE_URL}#{endpoint}.aspx", params)
         response = Hash[CGI.parse(raw_response).map { |k, v| [k, v.first] }]
+
         Response.new(
           response['StatusID'] == "0",
           response['ResponseMessage'] || response['Message'],

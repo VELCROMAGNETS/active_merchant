@@ -57,7 +57,7 @@ class PaymentXpTest < Test::Unit::TestCase
       custom: "foo",
       TransactionAmount: "2.34",
       TransactionID: "transaction_x",
-      TransactionType: "CreditCardAdjust",
+      TransactionType: "CreditCardCredit",
     )
 
     @gateway.refund(@refund_amount, "transaction_x", custom: "foo")
@@ -69,8 +69,8 @@ class PaymentXpTest < Test::Unit::TestCase
 
     assert_equal true, response.success?
     assert_equal "APPROVED", response.message
-    assert_equal({'TransactionID' => "9652069"}, response.params.slice('TransactionID'))
-    assert_equal "9652069", response.authorization
+    assert_equal({'TransactionID' => "9715402"}, response.params.slice('TransactionID'))
+    assert_equal "9715402", response.authorization
   end
 
   def test_refund_response_failure
@@ -199,11 +199,11 @@ class PaymentXpTest < Test::Unit::TestCase
   end
 
   def refund_response_success
-    "PostedDate=2/19/2014 2:13:17 PM&StatusID=0&TransactionID=9652069&ReferenceNumber=&TransactionAmount=2.00&AuthorizationCode=0&ResponseCode=&ResponseMessage=APPROVED&CVV2ResponseCode=&CVV2ResponseMessage=&AVSResponseCode=&AVSResponseMessage=&URLPostback=&Table14Data=&CardNumber=4242&CustomerName=Longbob Longsen&BillingNameFirst=&BillingNameLast=&BillingAddress=1234 My Street Apt 1&BillingCity=Ottawa&BillingState=ON&BillingZipCode=K1C2N6&BillingCountry=CA&BillingPhone=5555555555&BillingFax=&BillingEmail=&CustomerID=&ProductDescription=&Action=&RedirectUrl=&ShippingAddress1=&ShippingAddress2=&ShippingCity=&ShippingState=&ShippingZipCode=&ShippingCountry=&CustomInfo1=&CustomInfo2=&CustomInfo3=&CustomInfo4=&CustomInfo5=&CustomInfo6=&CustomInfo7=&CustomInfo8=&CustomInfo9=&CustomInfo10=&CustomInfo11=&CustomInfo12=&CustomInfo13=&CustomInfo14=&CustomInfo15=&CustomInfo16=&CustomInfo17=&CustomInfo18=&CustomInfo19=&CustomInfo20=&"
+    "PostedDate=2/21/2014 1:17:00 PM&StatusID=0&TransactionID=9715402&ReferenceNumber=&TransactionAmount=2.34&AuthorizationCode=0&ResponseCode=00&ResponseMessage=APPROVED&CVV2ResponseCode=&CVV2ResponseMessage=&AVSResponseCode=&AVSResponseMessage=&URLPostback=&Table14Data=&CardNumber=4242&CustomerName=Brian Alexander&BillingNameFirst=&BillingNameLast=&BillingAddress=123 Test St&BillingCity=Moab&BillingState=UT&BillingZipCode=84532&BillingCountry=&BillingPhone=&BillingFax=&BillingEmail=&CustomerID=&ProductDescription=&Action=&RedirectUrl=&ShippingAddress1=&ShippingAddress2=&ShippingCity=&ShippingState=&ShippingZipCode=&ShippingCountry=&CustomInfo1=&CustomInfo2=&CustomInfo3=&CustomInfo4=&CustomInfo5=&CustomInfo6=&CustomInfo7=&CustomInfo8=&CustomInfo9=&CustomInfo10=&CustomInfo11=&CustomInfo12=&CustomInfo13=&CustomInfo14=&CustomInfo15=&CustomInfo16=&CustomInfo17=&CustomInfo18=&CustomInfo19=&CustomInfo20=&"
   end
 
   def refund_response_failure
-    "PostedDate=2/19/2014 2:15:00 PM&StatusID=19&TransactionID=&ReferenceNumber=&TransactionAmount=0.00&AuthorizationCode=0&ResponseCode=611&ResponseMessage=MAX VALUE EXCEEDED&CVV2ResponseCode=&CVV2ResponseMessage=&AVSResponseCode=&AVSResponseMessage=&URLPostback=&Table14Data=&CardNumber=&CustomerName=&BillingNameFirst=&BillingNameLast=&BillingAddress=&BillingCity=&BillingState=&BillingZipCode=&BillingCountry=&BillingPhone=&BillingFax=&BillingEmail=&CustomerID=&ProductDescription=&Action=&RedirectUrl=&ShippingAddress1=&ShippingAddress2=&ShippingCity=&ShippingState=&ShippingZipCode=&ShippingCountry=&CustomInfo1=&CustomInfo2=&CustomInfo3=&CustomInfo4=&CustomInfo5=&CustomInfo6=&CustomInfo7=&CustomInfo8=&CustomInfo9=&CustomInfo10=&CustomInfo11=&CustomInfo12=&CustomInfo13=&CustomInfo14=&CustomInfo15=&CustomInfo16=&CustomInfo17=&CustomInfo18=&CustomInfo19=&CustomInfo20=&"
+    "PostedDate=2/21/2014 1:17:19 PM&StatusID=19&TransactionID=&ReferenceNumber=&TransactionAmount=0.00&AuthorizationCode=0&ResponseCode=611&ResponseMessage=MAX VALUE EXCEEDED&CVV2ResponseCode=&CVV2ResponseMessage=&AVSResponseCode=&AVSResponseMessage=&URLPostback=&Table14Data=&CardNumber=&CustomerName=&BillingNameFirst=&BillingNameLast=&BillingAddress=&BillingCity=&BillingState=&BillingZipCode=&BillingCountry=&BillingPhone=&BillingFax=&BillingEmail=&CustomerID=&ProductDescription=&Action=&RedirectUrl=&ShippingAddress1=&ShippingAddress2=&ShippingCity=&ShippingState=&ShippingZipCode=&ShippingCountry=&CustomInfo1=&CustomInfo2=&CustomInfo3=&CustomInfo4=&CustomInfo5=&CustomInfo6=&CustomInfo7=&CustomInfo8=&CustomInfo9=&CustomInfo10=&CustomInfo11=&CustomInfo12=&CustomInfo13=&CustomInfo14=&CustomInfo15=&CustomInfo16=&CustomInfo17=&CustomInfo18=&CustomInfo19=&CustomInfo20=&"
   end
 
   def store_response_success
