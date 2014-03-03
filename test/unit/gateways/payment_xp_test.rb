@@ -13,24 +13,13 @@ class PaymentXpTest < Test::Unit::TestCase
   end
 
   def test_purchase_request
-    @gateway.expects(:commit).once.with("WebHost", "TransactionID", expected_address_options.merge(expected_credit_card_options).merge(
+    @gateway.expects(:commit).once.with(expected_credit_card_options.merge(expected_address_options).merge(
       CustomInfo1: "blah blah blah",
       TransactionAmount: "4.00",
       TransactionType: "CreditCardCharge",
-    ))
+    ), instance_of(Hash))
 
     @gateway.purchase(@amount, @credit_card, address: @address, CustomInfo1: "blah blah blah")
-  end
-
-  def test_purchase_request_with_token
-    @gateway.expects(:commit).once.with("WebHost", "TransactionID", expected_address_options.merge(
-      CustomInfo1: "blah blah blah",
-      Token: "tok_123",
-      TransactionAmount: "4.00",
-      TransactionType: "CreditCardCharge",
-    ))
-
-    @gateway.purchase(@amount, "tok_123", address: @address, CustomInfo1: "blah blah blah")
   end
 
   def test_purchase_response_success
@@ -52,12 +41,44 @@ class PaymentXpTest < Test::Unit::TestCase
     assert_equal({"StatusID"=>"5"}, response.params.slice('StatusID'))
   end
 
+  def test_purchase_with_customer_id_request
+    @gateway.expects(:commit).once.with({
+      CustomInfo1: "blah blah blah",
+      CustomerID: "tok_123",
+      TransactionAmount: "4.00",
+      TransactionType: "AddCustomerCCCharge",
+    }, instance_of(Hash))
+
+    @gateway.purchase(@amount, "tok_123", address: @address, CustomInfo1: "blah blah blah")
+  end
+
+  def test_purchase_with_customer_id_response_success
+    @gateway.stubs(:ssl_post).returns(purchase_for_customer_response_success)
+    response = @gateway.purchase(@amount, "customer_123")
+
+    assert_equal true, response.success?
+    assert_equal "APPROVED", response.message
+    assert_equal({'TransactionID' => "10016210"}, response.params.slice('TransactionID'))
+    assert_equal "10016210", response.authorization
+  end
+
+  def test_purchase_with_customer_id_response_failure
+    @gateway.stubs(:ssl_post).returns(purchase_for_customer_response_failure)
+    response = @gateway.purchase(@amount, "customer_123")
+
+    assert_equal false, response.success?
+    assert_equal "", response.message
+    assert_equal({'StatusID' => "5"}, response.params.slice('StatusID'))
+  end
+
   def test_refund_request
-    @gateway.expects(:commit).once.with("WebHost", "TransactionID",
-      custom: "foo",
-      TransactionAmount: "2.34",
-      TransactionID: "transaction_x",
-      TransactionType: "CreditCardCredit",
+    @gateway.expects(:commit).once.with(
+      {
+        custom: "foo",
+        TransactionAmount: "2.34",
+        TransactionID: "transaction_x",
+        TransactionType: "CreditCardCredit",
+      }, authorization_param: "TransactionID"
     )
 
     @gateway.refund(@refund_amount, "transaction_x", custom: "foo")
@@ -83,9 +104,13 @@ class PaymentXpTest < Test::Unit::TestCase
   end
 
   def test_store_request
-    @gateway.expects(:commit).once.with("GetToken", "Token", expected_credit_card_options.except(:BillingFullName).merge(custom: "foo"))
+    @gateway.expects(:commit).once.with(expected_credit_card_for_customer_options.merge(expected_address_for_customer_options).merge(
+      custom: "foo",
+      CustomerID: "123",
+      TransactionType: "AddCustomer",
+    ), instance_of(Hash))
 
-    @gateway.store(@credit_card, custom: "foo")
+    @gateway.store(@credit_card, address: @address, custom: "foo", customer_id: "123")
   end
 
   def test_store_response_success
@@ -93,9 +118,18 @@ class PaymentXpTest < Test::Unit::TestCase
     response = @gateway.store(@credit_card)
 
     assert_equal true, response.success?
-    assert_equal "Success", response.message
-    assert_equal({"Token"=>"32d56fd7-c9e4-4709-b6c8-e4fda3701830", "StatusID"=>"0", "Message"=>"Success"}, response.params)
-    assert_equal "32d56fd7-c9e4-4709-b6c8-e4fda3701830", response.authorization
+    assert_equal "APPROVED", response.message
+    assert_equal({ "StatusID"=>"1" }, response.params.slice('StatusID'))
+    assert_equal "86b856a9-c875-4129-8f81-9470888f2f77", response.authorization
+  end
+
+  def test_store_response_failure
+    @gateway.stubs(:ssl_post).returns(store_response_failure)
+    response = @gateway.store(@credit_card)
+
+    assert_equal false, response.success?
+    assert_equal "Invalid Credit Card", response.message
+    assert_equal({ "StatusID"=>"0" }, response.params.slice('StatusID'))
   end
 
   def test_add_address
@@ -116,11 +150,17 @@ class PaymentXpTest < Test::Unit::TestCase
     end
   end
 
-  def test_add_creditcard_with_token
-    post = {}
-    @gateway.send(:add_creditcard, post, "token_123")
+  def test_add_creditcard_with_string_expiration
+    credit_card = @credit_card.dup
+    credit_card.month = credit_card.month.to_s
+    credit_card.year = credit_card.year.to_s
 
-    assert_equal "token_123", post[:Token]
+    post = {}
+    @gateway.send(:add_creditcard, post, credit_card)
+
+    expected_credit_card_options.each do |key, value|
+      assert_equal value, post[key]
+    end
   end
 
   def test_add_money
@@ -130,28 +170,20 @@ class PaymentXpTest < Test::Unit::TestCase
     assert_equal "12.34", post[:TransactionAmount]
   end
 
-  def test_add_tokenizable_creditcard
-    post = {}
-    @gateway.send(:add_tokenizable_creditcard, post, @credit_card)
-
-    expected_credit_card_options.except(:BillingFullName).each do |key, value|
-      assert_equal value, post[key]
-    end
-  end
-
   def test_commit_request
     @gateway.expects(:ssl_post)
       .once
       .with("https://webservice.paymentxp.com/wh/TestMethod.aspx", 'MerchantID=id_x&MerchantKey=key_x&Option1=foo')
       .returns(purchase_response_success)
-    @gateway.send(:commit, "TestMethod", "TransactionID", Option1: "foo")
+    @gateway.send(:commit, { Option1: "foo" }, authorization_param: "TransactionID", endpoint: "TestMethod")
   end
 
   def test_commit_response_success
     @gateway.stubs(:ssl_post).returns(purchase_response_success)
-    response = @gateway.send(:commit, "TransactionID", "TestMethod", {})
+    response = @gateway.send(:commit, {}, authorization_param: "TransactionID")
 
     assert_equal true, response.success?
+    assert_equal "9475529", response.authorization
     assert_equal "APPROVED", response.message
     assert_equal({'TransactionID' => "9475529"}, response.params.slice('TransactionID'))
     assert_equal "Y", response.avs_result['code']
@@ -160,7 +192,7 @@ class PaymentXpTest < Test::Unit::TestCase
 
   def test_commit_response_failure
     @gateway.stubs(:ssl_post).returns(purchase_response_failure)
-    response = @gateway.send(:commit, "TransactionID", "TestMethod", {})
+    response = @gateway.send(:commit, {})
 
     assert_equal false, response.success?
     assert_equal "INVALID CARD NUMBER", response.message
@@ -181,6 +213,18 @@ class PaymentXpTest < Test::Unit::TestCase
     }
   end
 
+  def expected_address_for_customer_options
+    {
+      Address: '1234 My Street, Apt 1',
+      PhoneNumber: '5555555555',
+      City: 'Ottawa',
+      Country: 'CA',
+      CustomerName: 'Jim Smith',
+      State: 'ON',
+      Zip: 'K1C2N6',
+    }
+  end
+
   def expected_credit_card_options
     {
       BillingFullName: "Longbob Longsen",
@@ -188,6 +232,22 @@ class PaymentXpTest < Test::Unit::TestCase
       CVV2: "123",
       ExpirationDateMMYY: "0115",
     }
+  end
+
+  def expected_credit_card_for_customer_options
+    {
+      CustomerName: "Longbob Longsen",
+      CardNumber: "4242424242424242",
+      CardExpirationDate: "0115",
+    }
+  end
+
+  def purchase_for_customer_response_success
+    "PostedDate=3/3/2014 10:55:35 AM&StatusID=0&TransactionID=10016210&ReferenceNumber=&TransactionAmount=4.00&AuthorizationCode=541085&ResponseCode=00&ResponseMessage=APPROVED&CVV2ResponseCode=M&CVV2ResponseMessage=CVV MATCH&AVSResponseCode=Y&AVSResponseMessage=ADDRESS AND ZIP MATCH&URLPostback=&Table14Data=&CardNumber=4242&CustomerName=Longbob Longsen&BillingNameFirst=&BillingNameLast=&BillingAddress=1234 My Street Apt 1&BillingCity=Ottawa&BillingState=ON&BillingZipCode=K1C2N6&BillingCountry=CA&BillingPhone=&BillingFax=&BillingEmail=&CustomerID=86b856a9-c875-4129-8f81-9470888f2f77&ProductDescription=&Action=&RedirectUrl=&ShippingAddress1=&ShippingAddress2=&ShippingCity=&ShippingState=&ShippingZipCode=&ShippingCountry=&CustomInfo1=&CustomInfo2=&CustomInfo3=&CustomInfo4=&CustomInfo5=&CustomInfo6=&CustomInfo7=&CustomInfo8=&CustomInfo9=&CustomInfo10=&CustomInfo11=&CustomInfo12=&CustomInfo13=&CustomInfo14=&CustomInfo15=&CustomInfo16=&CustomInfo17=&CustomInfo18=&CustomInfo19=&CustomInfo20=&"
+  end
+
+  def purchase_for_customer_response_failure
+    "PostedDate=3/3/2014 10:56:32 AM&StatusID=5&TransactionID=&ReferenceNumber=&TransactionAmount=0.00&AuthorizationCode=0&ResponseCode=505&ResponseMessage=&CVV2ResponseCode=&CVV2ResponseMessage=&AVSResponseCode=&AVSResponseMessage=&URLPostback=&Table14Data=&CardNumber=&CustomerName=&BillingNameFirst=&BillingNameLast=&BillingAddress=&BillingCity=&BillingState=&BillingZipCode=&BillingCountry=&BillingPhone=&BillingFax=&BillingEmail=&CustomerID=&ProductDescription=&Action=&RedirectUrl=&ShippingAddress1=&ShippingAddress2=&ShippingCity=&ShippingState=&ShippingZipCode=&ShippingCountry=&CustomInfo1=&CustomInfo2=&CustomInfo3=&CustomInfo4=&CustomInfo5=&CustomInfo6=&CustomInfo7=&CustomInfo8=&CustomInfo9=&CustomInfo10=&CustomInfo11=&CustomInfo12=&CustomInfo13=&CustomInfo14=&CustomInfo15=&CustomInfo16=&CustomInfo17=&CustomInfo18=&CustomInfo19=&CustomInfo20=&"
   end
 
   def purchase_response_success
@@ -207,7 +267,11 @@ class PaymentXpTest < Test::Unit::TestCase
   end
 
   def store_response_success
-    "Token=32d56fd7-c9e4-4709-b6c8-e4fda3701830&StatusID=0&Message=Success"
+    "PostedDate=3/3/2014 10:25:14 AM&StatusID=1&Message=&Status=APPROVED&CardNumber=4242&CustomerName=Longbob Longsen&BillingNameFirst=&BillingNameLast=&Address=1234 My Street Apt 1&City=Ottawa&State=ON&Zip=K1C2N6&Country=CA&Phone=&Fax=&Email=&BankName=&AccountName=&RoutingNumber=&AccountNumber=****&CardExpirationDate=0915&BankAccountType=&AvailablePaymentTypes=C&CustomerID=86b856a9-c875-4129-8f81-9470888f2f77&ShippingAddress=&ShippingCity=&ShippingState=&ShippingZip=&ShippingCountry=&"
+  end
+
+  def store_response_failure
+    "PostedDate=3/3/2014 10:26:40 AM&StatusID=0&Message=Invalid Credit Card&Status=DENIED&CardNumber=&CustomerName=&BillingNameFirst=&BillingNameLast=&Address=&City=&State=&Zip=&Country=&Phone=&Fax=&Email=&BankName=&AccountName=&RoutingNumber=&AccountNumber=&CardExpirationDate=&BankAccountType=&AvailablePaymentTypes=&CustomerID=&ShippingAddress=&ShippingCity=&ShippingState=&ShippingZip=&ShippingCountry=&"
   end
 
 end
